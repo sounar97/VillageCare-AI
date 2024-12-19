@@ -17,7 +17,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff",
         "permissions": ["ACCESS_FINE_LOCATION"]
-      }
+      },
+      "package":"com.student.vc"
     },
     "web": {
       "bundler": "metro",
