@@ -12,6 +12,14 @@ import os
 import tempfile
 import base64
 import openai
+import whisper
+import io
+import subprocess
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
+
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -21,7 +29,8 @@ CORS(app)
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# MongoDB connection removed for simplicity since not required now.
+# Load Whisper model
+model = whisper.load_model("base")
 
 # Load embeddings and initialize retriever
 embeddings = download_hugging_face_embeddings()
@@ -70,6 +79,14 @@ def analyze_image_with_gpt4(image_path):
         return response.choices[0].message.content
     except Exception as e:
         return f"Error during analysis: {str(e)}"
+    
+def transcribe_audio(audio_bytes):
+    try:
+        audio_file = io.BytesIO(audio_bytes)
+        transcription = model.transcribe(audio_file)
+        return transcription["text"]
+    except Exception as e:
+        return f"Error during transcription: {str(e)}"
 
 @app.route("/")
 def index():
@@ -78,22 +95,121 @@ def index():
 @app.route("/get", methods=["POST"])
 def text_chat():
     """
-    Text-based chat interaction.
+    Text-based chat interaction with language translation.
     """
     try:
         data = request.get_json()
         msg = data.get("msg", "")
+        language = data.get("language", "en")  # Default to English
+
         if not msg:
             return jsonify({"error": "Message is required"}), 400
 
-        print("User Input:", msg)
-        response = rag_chain.invoke({"input": msg})
-        print("Response:", response["answer"])
+        print(f"User Input: {msg} | Language: {language}")
 
-        return jsonify({"answer": response["answer"]})
+        # Translate the input to English if not in English
+        if language != "en":
+            translation_response = openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Translate the following text to English."
+                    },
+                    {
+                        "role": "user",
+                        "content": msg
+                    }
+                ]
+            )
+            msg = translation_response.choices[0].message.content
+            print(f"Translated Input: {msg}")
+
+        # Get the response from RAG Chain
+        response = rag_chain.invoke({"input": msg})
+        answer = response.get("answer", "I couldn't understand your request. Please try again.")
+
+        # Translate the response back to the user's language
+        if language != "en":
+            translation_response = openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"Translate the following text to {language}."
+                    },
+                    {
+                        "role": "user",
+                        "content": answer
+                    }
+                ]
+            )
+            answer = translation_response.choices[0].message.content
+
+        print(f"Response in {language}: {answer}")
+        return jsonify({"answer": answer}), 200
+
     except Exception as e:
-        print("Error:", str(e))
-        return jsonify({"error": "Something went wrong, please try again."}), 500
+        print(f"Error during text chat processing: {str(e)}")
+        return jsonify({"error": f"Something went wrong: {str(e)}"}), 500
+
+
+
+@app.route('/voice', methods=['POST'])
+def voice_chat():
+    try:
+        # Check if audio file is in the request
+        if "audio" not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        audio_file = request.files["audio"]
+
+        # Save the uploaded audio temporarily as .m4a
+        temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".m4a").name
+        audio_file.save(temp_audio_path)
+        print(f"Audio saved to temporary path: {temp_audio_path}")
+
+        # Convert .m4a to .wav
+        temp_wav_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+        try:
+            AudioSegment.from_file(temp_audio_path).export(temp_wav_path, format="wav")
+            print(f"Audio converted to WAV at: {temp_wav_path}")
+        except Exception as e:
+            print(f"Error converting audio to WAV: {str(e)}")
+            return jsonify({"error": "Error converting audio to WAV"}), 500
+
+        # Load the .wav file using soundfile
+        audio, sample_rate = sf.read(temp_wav_path, dtype="float32")
+
+        # Ensure audio is mono
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=1)
+
+        # Run Whisper transcription
+        print("Transcribing audio...")
+        result = model.transcribe(temp_wav_path, fp16=False)
+        transcription = result["text"]
+        print(f"Transcription: {transcription}")
+
+        # Send transcribed text to the /get logic
+        print("Fetching response from the bot...")
+        response = rag_chain.invoke({"input": transcription})
+        response_text = response.get("answer", "I couldn't understand your request. Please try again.")
+        print(f"Bot Response: {response_text}")
+
+        # Cleanup temporary files
+        os.unlink(temp_audio_path)
+        os.unlink(temp_wav_path)
+
+        # Return both transcription and response
+        return jsonify({
+            "transcription": transcription,
+            "response": response_text
+        }), 200
+
+    except Exception as e:
+        print(f"Error during voice processing: {str(e)}")
+        return jsonify({"error": f"Error during transcription: {str(e)}"}), 500
 
 @app.route("/analyze_image", methods=["POST"])
 def analyze_image():

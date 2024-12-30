@@ -1,0 +1,110 @@
+@app.route('/voice', methods=['POST'])
+def voice_chat():
+    try:
+        # Check if audio file is in the request
+        if "audio" not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        audio_file = request.files["audio"]
+        audio_data = audio_file.read()
+        audio_bytes_io = io.BytesIO(audio_data)
+
+        # Load audio using soundfile
+        audio, sample_rate = sf.read(audio_bytes_io, dtype="float32")
+
+        # Ensure audio is mono
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=1)
+
+        # Run Whisper transcription
+        print("Transcribing audio...")
+        result = model.transcribe(audio, fp16=False)
+        transcription = result["text"]
+        print(f"Transcription: {transcription}")
+
+        # Send transcribed text to the /get logic
+        print("Fetching response from the bot...")
+        response = rag_chain.invoke({"input": transcription})
+        response_text = response.get("answer", "I couldn't understand your request. Please try again.")
+        print(f"Bot Response: {response_text}")
+
+        # Return both transcription and response
+        return jsonify({
+            "transcription": transcription,
+            "response": response_text
+        }), 200
+    except Exception as e:
+        print(f"Error during voice processing: {str(e)}")
+        return jsonify({"error": f"Error during transcription: {str(e)}"}), 500
+
+from flask import Flask, jsonify, request
+import io
+import os
+import tempfile
+import soundfile as sf
+from pydub import AudioSegment
+from src.helper import download_hugging_face_embeddings
+from src.prompt import system_prompt
+
+# Assuming model and rag_chain are already initialized
+
+app = Flask(__name__)
+
+@app.route('/voice', methods=['POST'])
+def voice_chat():
+    try:
+        # Check if audio file is in the request
+        if "audio" not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        audio_file = request.files["audio"]
+
+        # Save the uploaded audio temporarily
+        temp_wav_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+        audio_file.save(temp_wav_path)
+        print(f"Audio saved to temporary path: {temp_wav_path}")
+
+        # Verify the .wav file format using pydub and convert if necessary
+        try:
+            sound = AudioSegment.from_file(temp_wav_path)
+            # Re-export as a clean .wav to ensure compatibility
+            clean_wav_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+            sound.export(clean_wav_path, format="wav")
+            print(f"Clean WAV saved to: {clean_wav_path}")
+        except Exception as e:
+            print(f"Error processing audio file: {e}")
+            return jsonify({"error": "Invalid audio format"}), 400
+
+        # Load audio using soundfile
+        audio, sample_rate = sf.read(clean_wav_path, dtype="float32")
+
+        # Ensure audio is mono
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+
+        # Run Whisper transcription
+        print("Transcribing audio...")
+        result = model.transcribe(clean_wav_path, fp16=False)
+        transcription = result["text"]
+        print(f"Transcription: {transcription}")
+
+        # Fetch response from the bot
+        print("Fetching response from the bot...")
+        response = rag_chain.invoke({"input": transcription})
+        response_text = response.get("answer", "I couldn't understand your request. Please try again.")
+        print(f"Bot Response: {response_text}")
+
+        # Cleanup temporary files
+        os.unlink(temp_wav_path)
+        os.unlink(clean_wav_path)
+
+        # Return both transcription and response
+        return jsonify({
+            "transcription": transcription,
+            "response": response_text
+        }), 200
+
+    except Exception as e:
+        print(f"Error during voice processing: {str(e)}")
+        return jsonify({"error": f"Error during transcription: {str(e)}"}), 500
+

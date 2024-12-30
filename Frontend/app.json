@@ -4,7 +4,10 @@
     "slug": "MyApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "permissions": ["CAMERA","LOCATION"],
+    "permissions": [
+      "CAMERA",
+      "LOCATION"
+    ],
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -16,9 +19,13 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff",
-        "permissions": ["ACCESS_FINE_LOCATION"]
+        "permissions": [
+          "ACCESS_FINE_LOCATION",
+           "RECORD_AUDIO"
+
+        ]
       },
-      "package":"com.student.vc"
+      "package": "com.student.vc"
     },
     "web": {
       "bundler": "metro",
@@ -35,11 +42,11 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
     }
-    
   }
 }
