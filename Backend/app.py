@@ -13,7 +13,6 @@ import tempfile
 import base64
 import openai
 import whisper
-import io
 import subprocess
 import numpy as np
 import soundfile as sf
