@@ -83,14 +83,6 @@ Contributions are welcome! To contribute:
 2. Create a new branch for your feature/bug fix.
 3. Submit a pull request with a clear description of your changes.
 
-## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
 
-## Contact
 
-For queries, reach out to [sounar97@gmail.com](mailto:sounar97@gmail.com).
-
----
-
-Let me know if you want to adjust or add any specific sections.
