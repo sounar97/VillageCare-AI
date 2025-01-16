@@ -1,6 +1,3 @@
-Here’s a suggested README file for the 'VillageCare-AI' project:
-
----
 
 # VillageCare-AI
 
